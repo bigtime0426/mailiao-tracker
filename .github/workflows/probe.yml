@@ -1,0 +1,48 @@
+name: probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: probe
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: 安裝套件
+        run: pip install requests
+
+      - name: 探測資料來源
+        run: python probe.py
+
+      - name: 把報告顯示在執行摘要
+        run: cat probe_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 存回報告
+        run: |
+          git config user.name "probe-bot"
+          git config user.email "probe-bot@users.noreply.github.com"
+          git add probe_report.md probe_report.json
+          git diff --cached --quiet && exit 0
+          git commit -m "probe report"
+          for i in 1 2 3; do
+            git pull --rebase -X theirs && git push && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 5))
+          done
+          echo "存回失敗（已重試 3 次）"
+          exit 1
